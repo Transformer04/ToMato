@@ -8,15 +8,19 @@
 # timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
 # --------------------------------------------------------
 
+import sys
+import os
 
+sys.path.append(os.path.abspath("/home/smh-ewha/OURPROJ/SPViT/SPViT_DeiT"))
 from typing import Tuple
 
 import torch
-from timm.models.vision_transformer import Attention, Block, VisionTransformer
+from models import Attention, Block, VisionTransformer
 
 from tome.merge import bipartite_soft_matching, merge_source, merge_wavg
 from tome.utils import parse_r
 
+import torch.cuda.nvtx as nvtx
 
 class ToMeBlock(Block):
     """
@@ -28,17 +32,29 @@ class ToMeBlock(Block):
     def _drop_path1(self, x):
         return self.drop_path1(x) if hasattr(self, "drop_path1") else self.drop_path(x)
 
-    def _drop_path2(self, x):
+    def _drop_path(self, x):
         return self.drop_path2(x) if hasattr(self, "drop_path2") else self.drop_path(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Note: this is copied from timm.models.vision_transformer.Block with modifications.
         attn_size = self._tome_info["size"] if self._tome_info["prop_attn"] else None
-        x_attn, metric = self.attn(self.norm1(x), attn_size)
+        nvtx.range_push("norm")
+        norm = self.norm1(x)
+        nvtx.range_pop()
+        nvtx.range_push("attention")
+        x_attn, metric = self.attn(norm, attn_size)
+        nvtx.range_pop()
+
+        nvtx.range_push("drop_path")
         x = x + self._drop_path1(x_attn)
+        nvtx.range_pop()
 
         r = self._tome_info["r"].pop(0)
+       
+        print(x.data.shape)
+       
         if r > 0:
+            nvtx.range_push("ToME")
             # Apply ToMe here
             merge, _ = bipartite_soft_matching(
                 metric,
@@ -51,8 +67,20 @@ class ToMeBlock(Block):
                     merge, x, self._tome_info["source"]
                 )
             x, self._tome_info["size"] = merge_wavg(merge, x, self._tome_info["size"])
+            nvtx.range_pop()
+        
 
-        x = x + self._drop_path2(self.mlp(self.norm2(x)))
+        nvtx.range_push("norm")
+        norm2 = self.norm2(x)
+        nvtx.range_pop()
+        nvtx.range_push("feed forward")
+        mlp = self.mlp(norm2)
+        nvtx.range_pop()
+        nvtx.range_push("drop_path")
+        x = x + self.drop_path(mlp)
+        nvtx.range_pop()
+
+        #x = x + self._drop_path2(self.mlp(self.norm2(x)))
         return x
 
 
@@ -73,24 +101,39 @@ class ToMeAttention(Attention):
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
+
+        nvtx.range_push("QKV linear")
         q, k, v = (
             qkv[0],
             qkv[1],
             qkv[2],
         )  # make torchscript happy (cannot use tensor as tuple)
+        nvtx.range_pop()
 
+        nvtx.range_push("attn score")
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        nvtx.range_pop()
 
         # Apply proportional attention
         if size is not None:
             attn = attn + size.log()[:, None, None, :, 0]
 
+        
+        nvtx.range_push("softmax")
         attn = attn.softmax(dim=-1)
+        nvtx.range_pop()
+        nvtx.range_push("attn drop")
         attn = self.attn_drop(attn)
+        nvtx.range_pop()
 
+        nvtx.range_push("attn value")
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        nvtx.range_pop()
+
+        nvtx.range_push("proj")
         x = self.proj(x)
         x = self.proj_drop(x)
+        nvtx.range_pop()
 
         # Return k as well here
         return x, k.mean(1)
