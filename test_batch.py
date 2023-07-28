@@ -27,7 +27,7 @@ def test2():
     
     tome.patch.timm(model)
     # Set the number of tokens reduced per layer. See paper for details.
-    model.r = 2
+    model.r = 14
 
     print(model.__class__)
 

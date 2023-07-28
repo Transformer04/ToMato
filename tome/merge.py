@@ -49,11 +49,20 @@ def bipartite_soft_matching(
 
     if r <= 0:
         return do_nothing, do_nothing
+    
+    k = r // 4
+    r = r - k
+    print("k :")
+    print(k)
 
     with torch.no_grad():
         metric = metric / metric.norm(dim=-1, keepdim=True)
         a, b = metric[..., ::2, :], metric[..., 1::2, :]
         scores = a @ b.transpose(-1, -2)
+        x, y, z = scores.shape
+
+        print("score")
+        print(scores.shape)
 
         if class_token:
             scores[..., 0, :] = -math.inf
@@ -67,6 +76,19 @@ def bipartite_soft_matching(
         src_idx = edge_idx[..., :r, :]  # Merged Tokens
         dst_idx = node_idx[..., None].gather(dim=-2, index=src_idx)
 
+        print("unm_idx")
+        print(unm_idx.shape)
+
+        unm_score = scores.gather(dim=-2, index=unm_idx.expand(x, y - r, z))
+        
+        print("unm_score")
+        print(unm_score.shape)
+        
+        sum_scores = unm_score.sum(dim=-1)
+        sum_idx = sum_scores.argsort(dim=-1)[..., None]
+
+        prune_idx = sum_idx[..., k:, :]
+
         if class_token:
             # Sort to ensure the class token is at the start
             unm_idx = unm_idx.sort(dim=1)[0]
@@ -74,9 +96,10 @@ def bipartite_soft_matching(
     def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
         src, dst = x[..., ::2, :], x[..., 1::2, :]
         n, t1, c = src.shape
-        unm = src.gather(dim=-2, index=unm_idx.expand(n, t1 - r, c))
+        unm = src.gather(dim=-2, index=prune_idx.expand(n, t1 - r - k, c))
         src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
         dst = custom_scatter_reduce(-2, dst, dst_idx.expand(n, r, c), src, reduce=mode)
+
 
         if distill_token:
             return torch.cat([unm[:, :1], dst[:, :1], unm[:, 1:], dst[:, 1:]], dim=1)
