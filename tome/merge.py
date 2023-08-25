@@ -48,11 +48,7 @@ class ToMato():
                 metric = metric[:-1]
 
             attn = metric @ metric.transpose(-2, -1)
-
-            flatten_attn = attn.view(-1)
-            normalized_attn = F.softmax(flatten_attn, dim=0)
-            
-            attn = normalized_attn.view(attn.shape)
+            attn = F.softmax(attn, dim=-1)
 
         def visit_all_recursive(x, attn, N, C, sim):
             final_tokens = torch.Tensor([[0]*C])
