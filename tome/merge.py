@@ -11,6 +11,7 @@ sys.path.append(os.path.abspath("/home/smh-ewha/OURPROJ/ToMato/tome"))
 from typing import Callable, Tuple
 
 import torch
+import torch.nn.functional as F
 import torch.cuda.nvtx as nvtx
 
 def do_nothing(x, mode=None):
@@ -36,9 +37,8 @@ class ToMato():
         print(r)
         
         with torch.no_grad():
-            metric = x / x.norm(dim=-1, keepdim=True)
-            B, N, C = metric.shape
-            metric = metric[0]
+            B, N, C = x.shape
+            metric = x[0]
 
             if class_token:
                 cls_token = metric[:1]
@@ -48,6 +48,11 @@ class ToMato():
                 metric = metric[:-1]
 
             attn = metric @ metric.transpose(-2, -1)
+
+            flatten_attn = attn.view(-1)
+            normalized_attn = F.softmax(flatten_attn, dim=0)
+            
+            attn = normalized_attn.view(attn.shape)
 
         def visit_all_recursive(x, attn, N, C, sim):
             final_tokens = torch.Tensor([[0]*C])
