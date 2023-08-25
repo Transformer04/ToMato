@@ -13,13 +13,13 @@ import torch.cuda.nvtx as nvtx
 def test2():
     
     # Load a pretrained model, can be any vit / deit model.
-    model = torch.hub.load('/home/smh-ewha/OURPROJ/SPViT/SPViT_DeiT', 'deit_base_patch16_224', pretrained=True, source='local')
+    model = torch.hub.load('./', 'deit_base_patch16_224', pretrained=True, source='local')
 
     #model = timm.create_model("deit_base_patch16_224", pretrained=True)
     # Patch the model with ToMe.
     tome.patch.timm(model)
     # Set the number of tokens reduced per layer. See paper for details.
-    model.r = 14
+    model.r = 0.85
 
     print(model.__class__)
     model.eval()

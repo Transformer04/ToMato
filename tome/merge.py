@@ -64,17 +64,10 @@ class ToMato():
             
             final_tokens = final_tokens[1:]
             size = size[1:]
-            print("final_tokens")
-            print(final_tokens.shape)
-            print(final_tokens)
-            print("size")
-            print(size.shape)
-            print(size)
             return final_tokens, size
 
         def visit_recursive(x, attn, index, visited, sim):
             if index not in visited:
-                print(index, end=" ")
                 visited.add(index)
                 self.result = self.result + x[index]
                 self.num_merged += 1

@@ -41,12 +41,11 @@ class ToMeBlock(Block):
         nvtx.range_pop()
 
         r = self._tome_info["r"]
-        print("r")
-        print(r)
-       
-        print(x.data.shape)
 
         if self._tome_info["ToMato"] < 1:
+            #print("r")
+            #print(r)
+            #print(x.data.shape)
             if r > 0:
                 nvtx.range_push("ToME")
                 # Apply ToMe here
@@ -57,6 +56,7 @@ class ToMeBlock(Block):
                     self._tome_info["class_token"],
                     self._tome_info["distill_token"],
                 )
+                print(x.data.shape)
                 nvtx.range_pop()
 
         self._tome_info["ToMato"] += 1        

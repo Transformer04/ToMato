@@ -23,11 +23,11 @@ def test2():
 
     print(torch.cuda.get_device_name(torch.cuda.current_device()))
 
-    model = torch.hub.load('/home/smh-ewha/OURPROJ/SPViT/SPViT_DeiT', 'deit_base_patch16_224', pretrained=True, source='local')
+    model = torch.hub.load('./', 'deit_base_patch16_224', pretrained=True, source='local')
     
     tome.patch.timm(model)
     # Set the number of tokens reduced per layer. See paper for details.
-    model.r = 14
+    model.r = 0.85
 
     print(model.__class__)
 
@@ -37,7 +37,7 @@ def test2():
 
     paths=[]
     labels=[]
-    for dirname, _, filenames in os.walk('/home/smh-ewha/imagenet-mini/val'):
+    for dirname, _, filenames in os.walk('../imagenet-mini/val'):
         for filename in filenames:
             if filename[-4:] == 'JPEG':
                 paths += [(os.path.join(dirname, filename))]
@@ -77,7 +77,7 @@ def test2():
 
 
     test_set = CustomDataset(df)
-    test_loader = DataLoader(test_set, batch_size=32)
+    test_loader = DataLoader(test_set, batch_size=1)
 
     #test_set = torchvision.datasets.ImageNet(root="/home/smh-ewha/imagenet-mini", transform=transform, split='val')
     #test_loader = data.DataLoader(test_set, batch_size=1, shuffle=True, num_workers=4)
