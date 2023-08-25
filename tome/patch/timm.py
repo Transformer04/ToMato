@@ -8,26 +8,17 @@
 # timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
 # --------------------------------------------------------
 
-import sys
-import os
-
-sys.path.append(os.path.abspath("/home/smh-ewha/OURPROJ/SPViT/SPViT_DeiT"))
 from typing import Tuple
 
 import torch
 from models import Attention, Block, VisionTransformer
 
-from tome.merge import bipartite_soft_matching, merge_source, merge_wavg
+from tome.merge import ToMato
 from tome.utils import parse_r
 
 import torch.cuda.nvtx as nvtx
 
 class ToMeBlock(Block):
-    """
-    Modifications:
-     - Apply ToMe between the attention and mlp blocks
-     - Compute and propogate token size and potentially the token sources.
-    """
 
     def _drop_path1(self, x):
         return self.drop_path1(x) if hasattr(self, "drop_path1") else self.drop_path(x)
@@ -49,26 +40,26 @@ class ToMeBlock(Block):
         x = x + self._drop_path1(x_attn)
         nvtx.range_pop()
 
-        r = self._tome_info["r"].pop(0)
+        r = self._tome_info["r"]
+        print("r")
+        print(r)
        
         print(x.data.shape)
-       
-        if r > 0:
-            nvtx.range_push("ToME")
-            # Apply ToMe here
-            merge, _ = bipartite_soft_matching(
-                metric,
-                r,
-                self._tome_info["class_token"],
-                self._tome_info["distill_token"],
-            )
-            if self._tome_info["trace_source"]:
-                self._tome_info["source"] = merge_source(
-                    merge, x, self._tome_info["source"]
+
+        if self._tome_info["ToMato"] < 1:
+            if r > 0:
+                nvtx.range_push("ToME")
+                # Apply ToMe here
+                tm = ToMato()
+                x, self._tome_info["size"] = tm.tomato(
+                    x,
+                    r,
+                    self._tome_info["class_token"],
+                    self._tome_info["distill_token"],
                 )
-            x, self._tome_info["size"] = merge_wavg(merge, x, self._tome_info["size"])
-            nvtx.range_pop()
-        
+                nvtx.range_pop()
+
+        self._tome_info["ToMato"] += 1        
 
         nvtx.range_push("norm")
         norm2 = self.norm2(x)
@@ -147,9 +138,10 @@ def make_tome_class(transformer_class):
         """
 
         def forward(self, *args, **kwdargs) -> torch.Tensor:
-            self._tome_info["r"] = parse_r(len(self.blocks), self.r)
+            self._tome_info["r"] = self.r
             self._tome_info["size"] = None
             self._tome_info["source"] = None
+            self._tome_info["ToMato"] = 0
 
             return super().forward(*args, **kwdargs)
 
@@ -157,7 +149,7 @@ def make_tome_class(transformer_class):
 
 
 def apply_patch(
-    model: VisionTransformer, trace_source: bool = False, prop_attn: bool = True
+    model: VisionTransformer, prop_attn: bool = True
 ):
     """
     Applies ToMe to this transformer. Afterward, set r using model.r.
@@ -176,10 +168,10 @@ def apply_patch(
         "r": model.r,
         "size": None,
         "source": None,
-        "trace_source": trace_source,
         "prop_attn": prop_attn,
         "class_token": model.cls_token is not None,
         "distill_token": False,
+        "ToMato":0,
     }
 
     if hasattr(model, "dist_token") and model.dist_token is not None:

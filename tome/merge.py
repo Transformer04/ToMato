@@ -6,247 +6,97 @@
 # --------------------------------------------------------
 import sys
 import os
-sys.path.append(os.path.abspath("/home/smh-ewha/OURPROJ/ToMe/tome"))
+sys.path.append(os.path.abspath("/home/smh-ewha/OURPROJ/ToMato/tome"))
 
-import math
 from typing import Callable, Tuple
 
 import torch
-from torch_scatter import scatter
-from scatter_reduce import custom_scatter_reduce
+import torch.cuda.nvtx as nvtx
 
 def do_nothing(x, mode=None):
     return x
 
+class ToMato():
+    def __init__(self):
+        self.result = torch.Tensor([0]*768)
+        self.num_merged = 0
 
-def bipartite_soft_matching(
-    metric: torch.Tensor,
-    r: int,
-    class_token: bool = False,
-    distill_token: bool = False,
-) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with a balanced matching set (50%, 50%).
+    def tomato(
+        self,
+        x: torch.Tensor,
+        r: float,
+        class_token: bool = False,
+        distill_token: bool = False,
+    ) -> Tuple[Callable, Callable]:
 
-    Input size is [batch, tokens, channels].
-    r indicates the number of tokens to remove (max 50% of tokens).
-
-    Extra args:
-     - class_token: Whether or not there's a class token.
-     - distill_token: Whether or not there's also a distillation token.
-
-    When enabled, the class token and distillation tokens won't get merged.
-    """
-    protected = 0
-    if class_token:
-        protected += 1
-    if distill_token:
-        protected += 1
-
-    # We can only reduce by a maximum of 50% tokens
-    t = metric.shape[1]
-    r = min(r, (t - protected) // 2)
-
-    if r <= 0:
-        return do_nothing, do_nothing
-    
-    k = r // 4
-    r = r - k
-    print("k :")
-    print(k)
-
-    with torch.no_grad():
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = metric[..., ::2, :], metric[..., 1::2, :]
-        scores = a @ b.transpose(-1, -2)
-        x, y, z = scores.shape
-
-        print("score")
-        print(scores.shape)
-
-        if class_token:
-            scores[..., 0, :] = -math.inf
-        if distill_token:
-            scores[..., :, 0] = -math.inf
-
-        node_max, node_idx = scores.max(dim=-1)
-        edge_idx = node_max.argsort(dim=-1, descending=True)[..., None]
-
-        unm_idx = edge_idx[..., r:, :]  # Unmerged Tokens
-        src_idx = edge_idx[..., :r, :]  # Merged Tokens
-        dst_idx = node_idx[..., None].gather(dim=-2, index=src_idx)
-
-        print("unm_idx")
-        print(unm_idx.shape)
-
-        unm_score = scores.gather(dim=-2, index=unm_idx.expand(x, y - r, z))
+        if r <= 0:
+            return do_nothing, do_nothing
         
-        print("unm_score")
-        print(unm_score.shape)
+        print("r")
+        print(r)
         
-        sum_scores = unm_score.sum(dim=-1)
-        sum_idx = sum_scores.argsort(dim=-1)[..., None]
+        with torch.no_grad():
+            metric = x / x.norm(dim=-1, keepdim=True)
+            B, N, C = metric.shape
+            metric = metric[0]
 
-        prune_idx = sum_idx[..., k:, :]
+            if class_token:
+                cls_token = metric[:1]
+                metric = metric[1:]
+            if distill_token:
+                dis_token = metric[-1:]
+                metric = metric[:-1]
 
-        if class_token:
-            # Sort to ensure the class token is at the start
-            unm_idx = unm_idx.sort(dim=1)[0]
+            attn = metric @ metric.transpose(-2, -1)
 
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = x[..., ::2, :], x[..., 1::2, :]
-        n, t1, c = src.shape
-        unm = src.gather(dim=-2, index=prune_idx.expand(n, t1 - r - k, c))
-        src = src.gather(dim=-2, index=src_idx.expand(n, r, c))
-        dst = custom_scatter_reduce(-2, dst, dst_idx.expand(n, r, c), src, reduce=mode)
+        def visit_all_recursive(x, attn, N, C, sim):
+            final_tokens = torch.Tensor([[0]*C])
+            size = torch.Tensor([[0]])
+            visited = set()
+            for index in range(N-1):
+                if index not in visited:
+                    self.result = torch.Tensor([0]*C)
+                    self.num_merged = 0
+                    visit_recursive(x, attn, index, visited, sim)
+                    self.result = self.result / self.num_merged
+                    final_tokens = torch.cat((final_tokens, self.result.unsqueeze(0)), dim=0)
+                    size = torch.cat((size, torch.tensor([[self.num_merged]])), dim=0)
+            
+            final_tokens = final_tokens[1:]
+            size = size[1:]
+            print("final_tokens")
+            print(final_tokens.shape)
+            print(final_tokens)
+            print("size")
+            print(size.shape)
+            print(size)
+            return final_tokens, size
 
+        def visit_recursive(x, attn, index, visited, sim):
+            if index not in visited:
+                print(index, end=" ")
+                visited.add(index)
+                self.result = self.result + x[index]
+                self.num_merged += 1
+                if index%14!=0 and attn[index][index-1] >= sim:
+                    visit_recursive(x, attn, index-1, visited, sim)
+                if index%14!=13 and attn[index][index+1] >= sim:
+                    visit_recursive(x, attn, index+1, visited,  sim)
+                if index>13 and attn[index][index-14] >= sim:
+                    visit_recursive(x, attn, index-14, visited, sim)
+                if index<182 and attn[index][index+14] >= sim:
+                    visit_recursive(x, attn, index+14, visited, sim)
 
+        final_tokens, size = visit_all_recursive(metric, attn, N, C, r)
         if distill_token:
-            return torch.cat([unm[:, :1], dst[:, :1], unm[:, 1:], dst[:, 1:]], dim=1)
+            out = torch.cat((cls_token, final_tokens, dis_token), dim=0).unsqueeze(0)
+            size = torch.cat((torch.Tensor([[1]]), size, torch.Tensor([[1]])), dim=0).unsqueeze(0)
         else:
-            return torch.cat([unm, dst], dim=1)
-
-    def unmerge(x: torch.Tensor) -> torch.Tensor:
-        unm_len = unm_idx.shape[1]
-        unm, dst = x[..., :unm_len, :], x[..., unm_len:, :]
-        n, _, c = unm.shape
-
-        src = dst.gather(dim=-2, index=dst_idx.expand(n, r, c))
-
-        out = torch.zeros(n, metric.shape[1], c, device=x.device, dtype=x.dtype)
-
-        out[..., 1::2, :] = dst
-        out.scatter_(dim=-2, index=(2 * unm_idx).expand(n, unm_len, c), src=unm)
-        out.scatter_(dim=-2, index=(2 * src_idx).expand(n, r, c), src=src)
-
-        return out
-
-    return merge, unmerge
+            out = torch.cat((cls_token, final_tokens), dim=0).unsqueeze(0)
+            size = torch.cat((torch.Tensor([[1]]), size), dim=0).unsqueeze(0)
 
 
-def kth_bipartite_soft_matching(
-    metric: torch.Tensor, k: int
-) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with the two sets as (every kth element, the rest).
-    If n is the number of tokens, resulting number of tokens will be n // z.
-
-    Input size is [batch, tokens, channels].
-    z indicates the stride for the first set.
-    z = 2 is equivalent to regular bipartite_soft_matching with r = 0.5 * N
-    """
-    if k <= 1:
-        return do_nothing, do_nothing
-
-    def split(x):
-        t_rnd = (x.shape[1] // k) * k
-        x = x[:, :t_rnd, :].view(x.shape[0], -1, k, x.shape[2])
-        a, b = (
-            x[:, :, : (k - 1), :].contiguous().view(x.shape[0], -1, x.shape[-1]),
-            x[:, :, (k - 1), :],
-        )
-        return a, b
-
-    with torch.no_grad():
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = split(metric)
-        r = a.shape[1]
-        scores = a @ b.transpose(-1, -2)
-
-        _, dst_idx = scores.max(dim=-1)
-        dst_idx = dst_idx[..., None]
-
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = split(x)
-        n, _, c = src.shape
-        dst = dst.scatter(src, dst_idx.expand(n, r, c),-2, reduce=mode)
-        return dst
-
-    def unmerge(x: torch.Tensor) -> torch.Tensor:
-        n, _, c = x.shape
-        dst = x
-
-        src = dst.gather(dim=-2, index=dst_idx.expand(n, r, c)).to(x.dtype)
-
-        src = src.view(n, -1, (k - 1), c)
-        dst = dst.view(n, -1, 1, c)
-
-        out = torch.cat([src, dst], dim=-2)
-        out = out.contiguous().view(n, -1, c)
-
-        return out
-
-    return merge, unmerge
-
-
-def random_bipartite_soft_matching(
-    metric: torch.Tensor, r: int
-) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with the two sets as (r chosen randomly, the rest).
-    Input size is [batch, tokens, channels].
-
-    This will reduce the number of tokens by r.
-    """
-    if r <= 0:
-        return do_nothing, do_nothing
-
-    with torch.no_grad():
-        B, N, _ = metric.shape
-        rand_idx = torch.rand(B, N, 1, device=metric.device).argsort(dim=1)
-
-        a_idx = rand_idx[:, :r, :]
-        b_idx = rand_idx[:, r:, :]
-
-        def split(x):
-            C = x.shape[-1]
-            a = x.gather(dim=1, index=a_idx.expand(B, r, C))
-            b = x.gather(dim=1, index=b_idx.expand(B, N - r, C))
-            return a, b
-
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = split(metric)
-        scores = a @ b.transpose(-1, -2)
-
-        _, dst_idx = scores.max(dim=-1)
-        dst_idx = dst_idx[..., None]
-
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = split(x)
-        C = src.shape[-1]
-        dst = dst.scatter(src, dst_idx.expand(n, r, c),-2, reduce=mode)
-        return dst
-
-    def unmerge(x: torch.Tensor) -> torch.Tensor:
-        C = x.shape[-1]
-        dst = x
-        src = dst.gather(dim=-2, index=dst_idx.expand(B, r, C))
-
-        out = torch.zeros(B, N, C, device=x.device, dtype=x.dtype)
-
-        out.scatter_(dim=-2, index=a_idx.expand(B, r, C), src=src)
-        out.scatter_(dim=-2, index=b_idx.expand(B, N - r, C), src=dst)
-
-        return out
-
-    return merge, unmerge
-
-
-def merge_wavg(
-    merge: Callable, x: torch.Tensor, size: torch.Tensor = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Applies the merge function by taking a weighted average based on token size.
-    Returns the merged tensor and the new token sizes.
-    """
-    if size is None:
-        size = torch.ones_like(x[..., 0, None])
-
-    x = merge(x * size, mode="sum")
-    size = merge(size, mode="sum")
-
-    x = x / size
-    return x, size
+        return out, size
 
 
 def merge_source(

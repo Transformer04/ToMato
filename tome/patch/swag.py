@@ -14,7 +14,7 @@ from typing import Tuple
 
 import torch
 
-from tome.merge import bipartite_soft_matching, merge_source, merge_wavg
+from tome.merge import ToMato, merge_source
 from tome.utils import parse_r
 
 # Since we don't necessarily have the swag code available, this patch is a little bit more involved
@@ -41,18 +41,12 @@ def make_block_class(block_cls):
             r = self._tome_info["r"].pop(0)
             if r > 0:
                 # Apply ToMe here
-                merge, _ = bipartite_soft_matching(
+                tm = ToMato()
+                x, self._tome_info["size"] = tm.tomato(
                     metric,
                     r,
                     self._tome_info["class_token"],
                     self._tome_info["distill_token"],
-                )
-                if self._tome_info["trace_source"]:
-                    self._tome_info["source"] = merge_source(
-                        merge, x, self._tome_info["source"]
-                    )
-                x, self._tome_info["size"] = merge_wavg(
-                    merge, x, self._tome_info["size"]
                 )
 
             y = self.ln_2(x)
@@ -177,7 +171,6 @@ def apply_patch(model, trace_source: bool = False, prop_attn: bool = True):
         "r": model.r,
         "size": None,
         "source": None,
-        "trace_source": trace_source,
         "prop_attn": prop_attn,
         "class_token": model.classifier == "token",
         "distill_token": False,
