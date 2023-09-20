@@ -19,7 +19,7 @@ def test2():
     # Patch the model with ToMe.
     tome.patch.timm(model)
     # Set the number of tokens reduced per layer. See paper for details.
-    model.r = 0.98
+    model.r = 0.0005
 
     print(model.__class__)
     model.eval()
