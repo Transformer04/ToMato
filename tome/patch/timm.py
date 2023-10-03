@@ -13,7 +13,7 @@ from typing import Tuple
 import torch
 from models import Attention, Block, VisionTransformer
 
-from tome.merge import ToMato
+from tome.merge import ToMato, merge_source
 from tome.utils import parse_r
 
 import torch.cuda.nvtx as nvtx
@@ -50,6 +50,14 @@ class ToMeBlock(Block):
                 nvtx.range_push("ToME")
                 # Apply ToMe here
                 tm = ToMato()
+                if self._tome_info["trace_source"]:
+                    self._tome_info["source"] = merge_source(
+                        x,
+                        r,
+                        self._tome_info["source"],
+                        self._tome_info["class_token"],
+                        self._tome_info["distill_token"],
+                    )
                 x, self._tome_info["size"] = tm.tomato(
                     x,
                     r,
@@ -149,7 +157,7 @@ def make_tome_class(transformer_class):
 
 
 def apply_patch(
-    model: VisionTransformer, prop_attn: bool = True
+    model: VisionTransformer, trace_source: bool = False, prop_attn: bool = True
 ):
     """
     Applies ToMe to this transformer. Afterward, set r using model.r.
@@ -168,6 +176,7 @@ def apply_patch(
         "r": model.r,
         "size": None,
         "source": None,
+        "trace_source": trace_source,
         "prop_attn": prop_attn,
         "class_token": model.cls_token is not None,
         "distill_token": False,

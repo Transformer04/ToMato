@@ -94,15 +94,66 @@ class ToMato():
 
 
 def merge_source(
-    merge: Callable, x: torch.Tensor, source: torch.Tensor = None
+    x: torch.Tensor, r: float, source: torch.Tensor = None,
+        class_token: bool = False,
+        distill_token: bool = False,
 ) -> torch.Tensor:
     """
     For source tracking. Source is an adjacency matrix between the initial tokens and final merged groups.
     x is used to find out how many tokens there are in case the source is None.
     """
+    def visit_all_recursive(x, attn, source, sim):
+        final_source = torch.Tensor([[0]*197])
+        visited = set()
+        for index in range(N-1):
+            if index not in visited:
+                visit_recursive(x, attn, index, visited, sim)
+                final_source = torch.cat((final_source, source[index].unsqueeze(0)))
+        final_source = final_source[1:]
+                
+        return final_source
+
+    def visit_recursive(x, attn, index, visited, sim):
+        if index not in visited:
+            visited.add(index)
+            if index%14!=0 and attn[index][index-1] >= sim:
+                visit_recursive(x, attn, index-1, visited, sim)
+            if index%14!=13 and attn[index][index+1] >= sim:
+                visit_recursive(x, attn, index+1, visited,  sim)
+            if index>13 and attn[index][index-14] >= sim:
+                visit_recursive(x, attn, index-14, visited, sim)
+            if index<182 and attn[index][index+14] >= sim:
+                visit_recursive(x, attn, index+14, visited, sim)
+
     if source is None:
         n, t, _ = x.shape
         source = torch.eye(t, device=x.device)[None, ...].expand(n, t, t)
 
-    source = merge(source, mode="amax")
+    if r <= 0:
+        return do_nothing, do_nothing
+    
+    with torch.no_grad():
+        B, N, C = x.shape
+        metric = x[0]
+        source = source[0]
+
+        if class_token:
+            metric = metric[1:]
+            cls_source = source[:1]
+            source = source[1:]
+        if distill_token:
+            metric = metric[:-1]
+            dis_source = source[-1:]
+            source = source[:-1]
+
+        attn = metric @ metric.transpose(-2, -1)
+        attn = F.softmax(attn, dim=-1)
+
+    final_source = visit_all_recursive(metric, attn, source, r)
+    if distill_token:
+        source = torch.cat((cls_source, final_source, dis_source), dim=0).unsqueeze(0)
+        
+    else:
+        source = torch.cat((cls_source, final_source), dim=0).unsqueeze(0)
+
     return source

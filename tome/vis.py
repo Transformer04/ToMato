@@ -65,13 +65,13 @@ def make_visualization(
 
         color = (mask * img).sum(axis=(0, 1)) / mask.sum()
         mask_eroded = binary_erosion(mask[..., 0])[..., None]
-        mask_edge = mask - mask_eroded
+        #mask_edge = mask - mask_eroded
 
         if not np.isfinite(color).all():
             color = np.zeros(3)
 
         vis_img = vis_img + mask_eroded * color.reshape(1, 1, 3)
-        vis_img = vis_img + mask_edge * np.array(cmap[i]).reshape(1, 1, 3)
+        #vis_img = vis_img + mask_edge * np.array(cmap[i]).reshape(1, 1, 3)
 
     # Convert back into a PIL image
     vis_img = Image.fromarray(np.uint8(vis_img * 255))
