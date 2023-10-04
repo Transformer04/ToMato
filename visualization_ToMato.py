@@ -26,19 +26,22 @@ transform_norm = transforms.Compose(transform_list + [
     transforms.Normalize(model.default_cfg["mean"], model.default_cfg["std"]),
 ])
 
-img = Image.open("examples/images/husky.png")
+img = Image.open("examples/images/fox.JPEG")
 img_vis = transform_vis(img)
 img_norm = transform_norm(img)
 
 img.show()
 
-model.r = 0.000000001
+model.r = 0.00000000000000000001
 _ = model(img_norm[None, ...])
 source = model._tome_info["source"]
 
 print(f"{source.shape[1]} tokens at the end")
 print(f"source shape : {source.shape}")
-tome.make_visualization(img_vis, source, patch_size=16, class_token=True).show()
+merged_img = tome.make_visualization(img_vis, source, patch_size=16, class_token=True)
+merged_img.show()
+merged_img.save('/home/smh-ewha/OURPROJ/ToMato/output/output.JPEG', 'JPEG')
+
 
 '''
 model.r = [8] * 8  # 8 / 24 layers
