@@ -30,7 +30,7 @@ Here are some expected results when using the timm implementation *off-the-shelf
 | ToMe-B       |        84.57  |           309 |          13 |
 | OURS-B       |        85.82  |            95 |           7 |
 
-
+![Visualization](https://github.com/Transformer04/ToMato/assets/81407149/d593a9ce-b0da-4af5-bbe2-c5231e905617)
 
 ## License and Contributing
 
