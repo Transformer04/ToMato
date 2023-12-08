@@ -3,13 +3,17 @@
 ## About our code
 
 
-## How to build
-
-
 ## How to install
 
+git clone our repository to your computer
 
 ## How to test
+If you want to evaluate the accuracy of our model, enter <test_batch.py> file and change the directory path to your dataset in line 40.
+Then, run test_batch.py
+
+```
+python test_batch.py
+```
 
 
 ## Datasets
