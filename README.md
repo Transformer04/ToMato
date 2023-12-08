@@ -1,10 +1,9 @@
 # ToMato: Token Merging at Once
-
+![ToMato](https://github.com/Transformer04/ToMato/assets/81407149/87c51941-4da8-4fdd-a2a1-143ed639addc)
 ## About our code
-
+ViT(Vision Transformer) shows outstanding performance in various vision tasks by splitting images into patches and passing them through transformer blocks. However, the large model size and computational cost of ViT result in high inference latency and hindered acceleration. To accelerate ViT efficiently, we introduce ToMato(Token Merging at Once), a simple framework that recursively merges tokens by comparing similarity to adjacent tokens at the first transformer block. Applying the ToMato to DeiT-base model, we find that this reduces latency by 22.19% while maintaining high Top-1 accuracy of 80.14%.
 
 ## How to install
-
 git clone our repository to your computer
 
 ## How to test
@@ -14,7 +13,6 @@ Then, run test_batch.py
 ```
 python test_batch.py
 ```
-
 
 ## Datasets
 Test and validation were conducted using the Imagenet-mini-1000 dataset. The dataset can be checked at the following link.
