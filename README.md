@@ -5,6 +5,9 @@ ViT(Vision Transformer) shows outstanding performance in various vision tasks by
 
 ## How to install
 git clone our repository to your computer
+```
+git clone https://github.com/Transformer04/ToMato.git
+```
 
 ## How to test
 If you want to evaluate the accuracy of our model, enter <test_batch.py> file and change the directory path to your dataset in line 40.
