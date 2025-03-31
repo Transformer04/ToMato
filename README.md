@@ -33,19 +33,8 @@ Here are some expected results when using the timm implementation *off-the-shelf
 
 ![Visualization](https://github.com/Transformer04/ToMato/assets/81407149/d593a9ce-b0da-4af5-bbe2-c5231e905617)
 
-## License and Contributing
+## Reference
 
 This code has been implemented with reference to ToMe's code.
 Official PyTorch implemention of **ToMe** from the paper: [Token Merging: Your ViT but Faster](https://arxiv.org/abs/2210.09461).  
 Daniel Bolya, Cheng-Yang Fu, Xiaoliang Dai, Peizhao Zhang, Christoph Feichtenhofer, Judy Hoffman.
-
-Please refer to the [CC-BY-NC 4.0](LICENSE). For contributing, see [contributing](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
-
-```
-@inproceedings{bolya2022tome,
-  title={Token Merging: Your {ViT} but Faster},
-  author={Bolya, Daniel and Fu, Cheng-Yang and Dai, Xiaoliang and Zhang, Peizhao and Feichtenhofer, Christoph and Hoffman, Judy},
-  booktitle={International Conference on Learning Representations},
-  year={2023}
-}
-```
